@@ -1,0 +1,64 @@
+module NNcell_v2 (x1,w1,Yk,clk,rst_n,enable,cachebus_write,cachebus_write_enable,accumulate,addsub_op,activefun_op,multiplied);
+
+parameter data_width =32;
+parameter mode_amount =4;							//4bit
+
+input [data_width-1:0] x1,w1;						//input
+input clk,rst_n,enable,cachebus_write_enable;
+input accumulate;									//set 1 to accumulate 0 to reset DFF
+input multiplied;									//0 :add 1:multiplied
+input addsub_op;									//0 :add 1:sub
+input activefun_op;									//0 :no active function 1: use active function
+output  [data_width-1:0] Yk;
+output [data_width-1:0] cachebus_write;
+
+wire [data_width-1:0] add1,addout;
+wire [data_width-1:0] addout2;															
+wire [data_width-1:0] Yk;
+wire [2:0] rnd = 3'b000;
+
+wire [data_width-1:0] allzero = {data_width{1'b0}};
+wire [data_width-1:0] hz ={data_width{1'bz}};
+wire [data_width-1:0] Yk2,multi_b,add_b;
+
+reg [data_width-1:0] DFF;
+reg [data_width-1:0] din1,win1;					//synchronize the clk
+
+
+Multiplication U1( .a_operand(din1), .b_operand(multi_b), .result(add1));
+float_addsub U2( .FA(add1), .FB(add_b), .FS(addout), .op(addsub_op));
+DW_fp_addsub_inst U4( .inst_a(add1), .inst_b(add_b), .z_inst(addout2), .inst_rnd(rnd), .inst_op(addsub_op));
+relu U5 ( .Fin(addout), . Fout(Yk));
+
+assign Yk2 = (!activefun_op)? addout:Yk;
+assign cachebus_write = (cachebus_write_enable)?Yk2:32'hz;
+
+assign multi_b = (multiplied)? DFF:win1;
+assign add_b = (multiplied)? 32'd0:DFF;
+
+
+always@(posedge clk or negedge rst_n) begin
+	if(!rst_n) begin
+		DFF <= allzero;
+		din1 <= allzero;
+		win1 <= allzero;
+	end
+	else if (enable) begin
+		case (accumulate)
+			1'b0 : begin	
+				DFF <= allzero;
+				din1 <= allzero;
+				win1 <= allzero;
+			end
+			1'b1 : begin
+				din1 <= x1;
+				win1 <= w1;
+				DFF <= addout; 
+			end
+		endcase
+	end
+	else
+		DFF <= DFF;
+end
+
+endmodule
